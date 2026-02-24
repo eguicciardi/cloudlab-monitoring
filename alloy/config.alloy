@@ -1,0 +1,72 @@
+// alloy/config.alloy
+
+// ─── PROMETHEUS REMOTE WRITE ──────────────────────────────────────────────────
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_PROM_URL")
+
+    basic_auth {
+      username = env("GRAFANA_PROM_USER")
+      password = env("GRAFANA_API_KEY")
+    }
+  }
+}
+
+// ─── HOST METRICS ─────────────────────────────────────────────────────────────
+// Alloy includes a built-in unix exporter (equivalent to node_exporter).
+// We explicitly enable only the collectors we care about.
+prometheus.exporter.unix "host" {
+  // Enabled collectors:
+  // - cpu: usage per core and total
+  // - loadavg: 1m / 5m / 15m load average
+  // - meminfo: RAM used / free / cached / buffers
+  // - diskstats: I/O reads and writes per device
+  // - filesystem: disk space used / free per mount point
+  // - netdev: bytes and packets in/out per interface
+  // - uname: kernel and hostname info (useful as labels)
+  set_collectors = [
+    "cpu",
+    "loadavg",
+    "meminfo",
+    "diskstats",
+    "filesystem",
+    "netdev",
+    "uname",
+  ]
+}
+
+prometheus.scrape "host_metrics" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ─── CONTAINER METRICS (cAdvisor) ────────────────────────────────────────────
+// cAdvisor exposes per-container metrics: CPU, memory, network, restarts.
+prometheus.scrape "cadvisor" {
+  targets = [{
+    __address__ = "cadvisor:8080",
+  }]
+  metrics_path    = "/metrics"
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.cadvisor_filter.receiver] // → filter, not remote_write
+}
+
+// ─── METRIC FILTERING ────────────────────────────────────────────────────────
+// Drop everything from cAdvisor except the metrics we actually want.
+// This reduces cardinality and keeps you well within the free tier limits.
+prometheus.relabel "cadvisor_filter" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]   // → then to cloud
+
+  rule {
+    source_labels = ["__name__"]
+    regex         = "container_(cpu_usage_seconds_total|memory_usage_bytes|network_receive_bytes_total|network_transmit_bytes_total|last_seen|start_time_seconds)"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["container_label_com_docker_compose_service"]
+    regex         = "^$"
+    action        = "drop"
+  }
+}

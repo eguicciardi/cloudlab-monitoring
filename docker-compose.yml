@@ -1,0 +1,31 @@
+services:
+  cadvisor:
+    container_name: cadvisor_cloudlab
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - monitoring
+
+  alloy:
+    container_name: alloy_cloudlab
+    image: grafana/alloy:v1.5.1
+    restart: unless-stopped
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run /etc/alloy/config.alloy
+    depends_on:
+      - cadvisor
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge
