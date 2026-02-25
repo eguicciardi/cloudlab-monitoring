@@ -3,11 +3,11 @@
 // ─── PROMETHEUS REMOTE WRITE ──────────────────────────────────────────────────
 prometheus.remote_write "grafana_cloud" {
   endpoint {
-    url = env("GRAFANA_PROM_URL")
+    url = sys.env("GRAFANA_PROM_URL")
 
     basic_auth {
-      username = env("GRAFANA_PROM_USER")
-      password = env("GRAFANA_API_KEY")
+      username = sys.env("GRAFANA_PROM_USER")
+      password = sys.env("GRAFANA_API_KEY")
     }
   }
 }
